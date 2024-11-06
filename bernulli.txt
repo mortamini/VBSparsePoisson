@@ -1,0 +1,21 @@
+model {
+for(i in 1:n){
+for(j in 1:p){
+vec[i,j] <- X[i,j] * gamma[j] * beta[j]
+}
+power[i] <- intercept + sum(vec[i,])
+lambda[i] <- exp(power[i])
+y[i] ~ dpois(lambda[i])
+}
+intercept ~ dnorm(0,sigma)
+for(j in 1:p){
+gamma[j] ~ dbin(pi[j],1)
+pi[j] ~ dbeta(alpha0,beta0)
+beta[j] ~ dnorm(0,sigma)
+}
+sigma ~ dgamma(a0,b0)
+alpha0 <- 1.5
+beta0 <- 1.5
+a0 <- 1.0E-6
+b0 <- 1.0E-6
+}
