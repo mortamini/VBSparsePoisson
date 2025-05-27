@@ -5,6 +5,10 @@ if(!("generate_samples" %in% ls())){
 	source("utility.R")
 	source("sppoissregvb.R")
 	source("generate_samples.R")
+	source("predict.R")
+	source("hpd.R")
+	source("hpdplot.R")
+	source("predict_mcmc.R")
 }
 if(!all(c("package:grpreg","package:glmnet","package:MASS") %in% search())){
 	library(MASS)
@@ -12,6 +16,11 @@ if(!all(c("package:grpreg","package:glmnet","package:MASS") %in% search())){
 	library(grpreg)
 	library(GPBayes)
 	library(COUNT)
+	library(R2OpenBUGS)
+	library(ggplot2)
+	library(gsl)
+	library("rjags")
+	library(dplyr)
 }
 #
 data(azprocedure)

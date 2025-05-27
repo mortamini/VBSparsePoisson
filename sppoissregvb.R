@@ -7,6 +7,7 @@ sppoissregvb <- function(X, y, init, prior = "CS",
   	D_beta = sigma_beta + mu_beta %*% t(mu_beta)
 	pst = init$pst
 	p = ncol(X)
+	p0 = max(0.01,min(sum(pst)/p,0.99))
 	n = length(y)
 	if(nrow(X) != n) stop("number of samples in X and y are not equal!")
 	if(length(mu_beta) != p | nrow(sigma_beta) != p)
@@ -16,8 +17,9 @@ sppoissregvb <- function(X, y, init, prior = "CS",
 	tr <- function(Mat) sum(diag(Mat))
 	alphast = rep(1,p)
 	betast = rep(1,p)
-	alpha0 = 1.5
-  	beta0 = 1.5
+	alpha0 = 1
+  	beta0 = (1 - p0)/p0
+	elambda = 0.01
 	if(prior == "Bernulli"){
 		a0 = 1e-2
 		b0 = 1e-2
@@ -29,9 +31,9 @@ sppoissregvb <- function(X, y, init, prior = "CS",
   		Eam = 1
     	alpha_sigma2 = 0.5 * (p - 1)
 	} else if(prior == "Laplace"){
-  		nu = 0.001
-  		delta = 0.001
-  		elambda = 1
+  		nu = 0.0001
+  		delta = 0.01
+  		elambda = 0.01
   		ebeta2 = diag(D_beta[-1,-1])
   		astar = elambda
   		bstar = ebeta2
@@ -43,7 +45,10 @@ sppoissregvb <- function(X, y, init, prior = "CS",
   		Etau0m1 = (0.5 * D_beta[1,1] + Eam1)^(-1)
   		pst = rep(1,p)
 	}
-	kesi=X %*% diag(pst) %*% mu_beta
+	Pstar=diag(pst)
+    omega = pst %*% t(pst) + Pstar * (diag(p) - Pstar)
+	kesi = X %*% diag(pst) %*% mu_beta
+	#####kesi = sqrt(diag(X %*% (D_beta * omega) %*% t(X)))
 	Mkesi = exp(kesi)*(1-kesi)
 	diff = 10 * eps 
   	ELBO = -Inf
@@ -106,7 +111,10 @@ sppoissregvb <- function(X, y, init, prior = "CS",
 		}
 			alphast = pst + alpha0
     		betast = beta0 - pst + 1
-    		kesi = X %*% diag(pst) %*% mu_beta
+			Pstar=diag(pst)
+    		omega = pst %*% t(pst) + Pstar * (diag(p) - Pstar)
+			esi = X %*% diag(pst) %*% mu_beta
+			#####kesi = sqrt(diag(X %*% (D_beta * omega) %*% t(X)))
     		Mkesi = exp(kesi) * (1-kesi)
 		if(prior == "Bernulli"){
     		elbo = t(y - Mkesi) %*% X %*% Pstar %*% mu_beta - 
@@ -164,6 +172,7 @@ sppoissregvb <- function(X, y, init, prior = "CS",
                 pst = pst, 
 				 alphast = alphast,
 				 betast = betast, 
-				 sigmapars = sigmapars) 
+				 sigmapars = sigmapars,
+				elambda = elambda, ELBO = ELBO) 
   	output 
 }

@@ -18,7 +18,7 @@ beta[j] <- z[j] * eta1[j] + (1-z[j]) * eta2[j]
 sigma ~ dgamma(0.5,ai)
 sigma2 <- sigma/c
 ai ~ dgamma(0.5,1)
-alpha0 <- 1.5
-beta0 <- 1.5
-c <- 1.0E-3
+alpha0 <- 1
+beta0 <- 1/p0-1
+c <- 1.0E-2
 }

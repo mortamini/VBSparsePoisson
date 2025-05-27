@@ -15,7 +15,7 @@ predict <- function(fit,Xtest,method){
 			sd = sqrt(as.vector(t(x0)%*%Gamma%*%sigma_beta0%*%Gamma%*%(x0)))
 		}
 		yj = round(exp(mean-10*sd):exp(mean+10*sd)+1)
-		if(length(yj)>50) yj = round((exp(mean)-25):(exp(mean)+25))
+		if(length(yj)>50) yj = round(exp(mean-4*sd):exp(mean+4*sd)+1)
 		pyj = sapply(yj,function(y00){
 			integrate(function(x){exp(-x+y00*log(x)-lgamma(y00+1))*dlnorm(x,mean,sd)},
 			min(yj),max(yj))$value})
