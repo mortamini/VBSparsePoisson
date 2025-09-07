@@ -11,7 +11,8 @@ kdensity<-function(x,kernel="gaussian",bandwidth=NULL){
 	if(missing(bandwidth)| is.null(bandwidth)){
 		s=sd(x)
 		Q=quantile(x,0.75)-quantile(x,0.25)
-		sigma.hat=min(s,Q/1.34)
+		sigma.hat= min(s,Q/1.34)
+		if(sigma.hat == 0) sigma.hat = s
 		h=1.06*sigma.hat/length(x)^(1/5)
 	}else{
 		h<-bandwidth

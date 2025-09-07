@@ -53,6 +53,7 @@ sppoissregvb <- function(X, y, init, prior = "CS",
 	diff = 10 * eps 
   	ELBO = -Inf
   	cntr = 0
+	diffvec = c()
   	while(diff > eps & cntr < maxiter){
 		cntr = cntr + 1
     		SX = matrix(0,p,p)
@@ -94,7 +95,7 @@ sppoissregvb <- function(X, y, init, prior = "CS",
 			pst[1] = 1
     		Pstar = diag(pst)
 		} else if(prior == "Laplace"){
-    		elambda = (p + nu)/(delta + 0.5 * sum(Etau))
+    		elambda = (p + nu - 1)/(delta + 0.5 * sum(Etau))
   			ebeta2 = diag(D_beta[-1,-1])
   			astar = elambda
   			bstar = ebeta2
@@ -119,14 +120,14 @@ sppoissregvb <- function(X, y, init, prior = "CS",
 		if(prior == "Bernulli"){
     		elbo = t(y - Mkesi) %*% X %*% Pstar %*% mu_beta - 
 				0.5 * tr(D_beta %*% (SX * omega)) -
-          		sum( exp(kesi) +  kesi - 0.5 * kesi^2) + 
+          		sum(exp(kesi) +  kesi - 0.5 * kesi^2) + 
 				0.5 * sum(digamma(a_beta) - log(b_beta))  -
           		0.5 * tr(D_beta %*% diag(a_beta/b_beta)) + 
 				sum(pst * log(pst+1e-12) + (1- pst) * log(1- pst+1e-12)) +
           		0.5 * logdet(sigma_beta) + sum(lgamma(alphast) + lgamma(betast)) + 
 				0.5 * sum(log(b_beta)) - sum(a_beta*log(b_beta)) + b0 * sum(a_beta/b_beta)
 		} else if(prior == "Laplace"){
-    		elbo = - t(Mkesi) %*% (1 +X %*% mu_beta) -
+    		elbo = - t(Mkesi) %*% (1 + X %*% mu_beta) -
            		sum( exp(kesi) * kesi^2/2) -
           		0.5 * tr(SX %*% D_beta) + t(y)%*% X %*% mu_beta -
 				0.5 * Elogtau0  - 0.5 * Etau0m1 *  D_beta[1,1] -
@@ -140,9 +141,9 @@ sppoissregvb <- function(X, y, init, prior = "CS",
 		    elbo = - t(Mkesi) %*% (1+X %*% mu_beta) - 
 				sum(exp(kesi) * kesi^2/2) -
            		0.5 * tr(SX %*% D_beta) + t(y)%*% X %*% mu_beta -
-           		0.5 * (1-c^(-1))* Esigm2 * sum(Pstar * D_beta) -
+           		0.5 * (1- c^(-1))* Esigm2 * sum(Pstar * D_beta) -
 	     		0.5 * c^(-1) * Esigm2 * tr(D_beta) + 
-           		0.5 * (p+3) * (digamma(alpha_sigma2) - log(beta_sigma2)) -
+           		0.5 * (p + 2) * (digamma(alpha_sigma2) - log(beta_sigma2)) -
            		1.5 * (digamma(alpha_sigma2) - log(beta_sigma2)) -
            		0.5 * Esigm2 / (A^(-1) + Esigm2) +
            		sum(pst * (digamma(alphast) - digamma(betast))) +
@@ -156,7 +157,8 @@ sppoissregvb <- function(X, y, init, prior = "CS",
 		}
 	if(elbo == -Inf) elbo = -1e300
     	ELBO =c(ELBO,elbo)
-    	diff = abs(ELBO[cntr +1] - ELBO[cntr]) 		
+    	diff = abs(ELBO[cntr +1] - ELBO[cntr])
+		diffvec = c(diffvec, diff)	
 	}
 	if(is.null(alphast)) alphast = 1
 	if(is.null(betast)) betast = 1
@@ -173,6 +175,6 @@ sppoissregvb <- function(X, y, init, prior = "CS",
 				 alphast = alphast,
 				 betast = betast, 
 				 sigmapars = sigmapars,
-				elambda = elambda, ELBO = ELBO) 
+				elambda = elambda, diffELBO = diffvec) 
   	output 
 }

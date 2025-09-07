@@ -54,7 +54,7 @@ for(iter in 1:10){
 	betahat1 = coef(fit1)
 	tLL <- fit1$nulldev - deviance(fit1)
 	k <- fit1$df
-	#n <- fit1$nobs
+	n <- fit1$nobs
 	AICc <- -tLL+2*k+2*k*(k+1)/(n-k-1)
 	betahat1 = mu_beta = mu_0 = betahat1[,which.min(AICc)]
 	pst1 = 1*(mu_0 !=0)
@@ -88,32 +88,67 @@ for(iter in 1:10){
 	pst3 = 1*(fit3$pst > 0.5)
 	betahat3 = fit3$mu_beta * fit3$pst
 	yhat3 = exp(X %*% betahat3)
+	#yhattest3 = exp(Xtest %*% betahat3)
 	yhattest3 = predict(fit3,Xtest,method = "Bernoulli")
+	#------------------------------------
+	cv3fold <- function(gam, pri){
+		nts=trunc(n/3)
+		CVf=c()
+		for(f in 1:3){
+			tests=nts*(f-1)+1:nts
+			ts.x=X[tests,]
+			ts.y=y[tests]
+			tr.y=y[-tests]
+			tr.x=X[-tests,]
+			fit <- tryCatch({
+				sppoissregvb(tr.x,tr.y,init,prior=pri, 
+				eps = 1e-5, maxiter = 100)},error=function(e){NULL})
+			betahat = tryCatch({fit$mu_beta},error=function(e){NULL})
+			betahat[-1] = tryCatch({betahat[-1] * (abs(betahat[-1]) > gam)},error=function(e){NULL})
+			yhat = tryCatch({trunc(exp(ts.x %*% betahat))},error=function(e){NULL})
+			CVf = c(CVf,tryCatch({mean(yhat - ts.y)^2},error=function(e){NULL}))
+		}
+		mean(CVf)
+	}
+	#------------------------------------
+	AICf <- function(gam, prin){
+		bethat = tryCatch({betahat[[prin]]},error=function(e){NULL})
+		bethat[-1] = tryCatch({bethat[-1] * (abs(bethat[-1]) > gam)},error=function(e){NULL})
+		yhat = tryCatch({trunc(exp(X %*% bethat))},error=function(e){NULL})
+		sse = tryCatch({mean(yhat - y)^2},error=function(e){NULL})
+		k = sum(bethat[-1] != 0)
+		AIC <- sse + 2*k
+		AIC
+	}
 	#------------------------------------
 	c = 1e-2
 	fit4 <- sppoissregvb(X,y,init,prior="CS")
 	p0 = min(0.9,max(0.1,sum(pst1)/p))
-	pst4 = 1 * ((fit4$mu_beta)^2>(-2*c/(1+c)*(0.5*log(c)+log(p0/(1-p0)))*fit4$sigmapars$beta_sigma2/(fit4$sigmapars$alpha_sigma2 - 1)))
-	####pst4 = 1*((fit4$pst)/sqrt(fit4$pst*(1-fit4$pst))>qnorm(1-0.05/p))
+	a = c(0,abs(fit4$mu_beta[-1]) - 1e-5)
+	b = c(abs(fit4$mu_beta[-1]) + 1e-5,0)
+	gamseq = sort((a + b)/2)
+	if(riskmethod == "cv3fold"){
+		risks = sapply(gamseq,cv3fold,"CS")
+	} else {
+		risks = sapply(gamseq,AICf,4)
+	}
+	gamopt = gamseq[which.min(risks)]
+	pst4 = c(1,1 * (abs(fit4$mu_beta[-1])> gamopt))
 	betahat4 = fit4$mu_beta * pst4
 	yhat4 = exp(X %*% betahat4)
 	yhattest4 = predict(fit4,Xtest,method = "CS")
 	#------------------------------------
 	fit5 <- sppoissregvb(X,y,init,prior="Laplace")
-	risk <- function(gam){
-		tauhat <- diag(fit5$sigma_beta)
-		risk <- mean(tauhat) * (p - 2 * 
-			sum(abs(fit5$mu_beta)/sqrt(tauhat)<gam)+
-			sum((pmax(abs(fit5$mu_beta)/sqrt(tauhat),gam))^2))
-		risk
+	a = c(0,abs(fit5$mu_beta[-1]) - 1e-5)
+	b = c(abs(fit5$mu_beta[-1]) + 1e-5,0)
+	gamseq = sort((a + b)/2)
+	if(riskmethod == "cv3fold"){
+		risks = sapply(gamseq,cv3fold,"Laplace")
+	} else {
+		risks = sapply(gamseq,AICf,5)
 	}
-	a = c(0,fit5$mu_beta - 1e-5)
-	b = c(fit5$mu_beta + 1e-5,0)
-	gamseq = sort(c((a + b)/2,fit5$mu_beta))
-	risks = sapply(gamseq,risk)
-	gamopt = gamseq[which.min(risks[risks>0])]
-	pst5 = 1 * (abs(fit5$mu_beta)>gamopt)
-	pst5[1] = 1
+	gamopt = gamseq[which.min(risks)]
+	pst5 = c(1,1 * (abs(fit5$mu_beta[-1])> gamopt))
 	betahat5 = fit5$mu_beta * pst5
 	yhat5 = exp(X %*% betahat5)
 	yhattest5 = predict(fit5,Xtest,method = "Laplace")
@@ -124,7 +159,7 @@ for(iter in 1:10){
 	set[4,iter] = mean((ytest-yhattest4)^2)/var(ytest)
 	set[5,iter] = mean((ytest-yhattest5)^2)/var(ytest)
 }
-round(rowMeans(set),3)
+round(apply(set,1,mean),3)
 round(apply(set,1,sd),3)
 
 
