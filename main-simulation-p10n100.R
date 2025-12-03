@@ -136,6 +136,7 @@ for(iter in 1:Iterations){
 	}
 	#------------------------------------
 	cat("CS-VB \n")
+	c = 1e-3
 	syst[4,iter] = system.time(fit[[4]] <- tryCatch({
 	sppoissregvb(X,y,init,prior="CS", 
 		eps = 1e-12, maxiter = 100)},error=function(e){NULL}))[[3]]
@@ -386,6 +387,7 @@ for(iter in 1:Iterations){
 			}
 		}
 		post = kdensity(parsims[[h-2]][,j])$fhat
+		if(h == 3 & realbeta[j] == 0) post <- function(bet){ifelse(bet == 0,1,0)*kdensity(parsims[[h-2]][,j])$fhat(bet)} 
 		ss = sapply(tt,qfunc)
 		if(iter == 1) lines(ss~tt,col="red")
 		if(iter == 1){
@@ -680,6 +682,13 @@ for(iter in 1:Iterations){
 	coverage[[iter]] = cover
 }
 #------------------------------------
+setwd("E:/desktop/research/Kharabati review/github3")
+save(seb,se,set,FPR,FNR,syst,coverage,
+accuracyl,accuracy2l,accuracy3l, 
+accuracy4l,accuracy5l,accuracy6l,
+file = "results1.Rdata")
+save(fit, file = "fitresult.Rdata")
+#------------------------------------
 load(file.choose())
 #------------------------------------
 #------------------------------------
@@ -937,6 +946,30 @@ ylab('Computation time relative to CS-MCMC')
 suppressWarnings(print(myplot))
 dev.off()
 #------------------------------------
+#------------------------------------
+#------------------------------------
+#------------------------------------
+#----plot HPDs one by one -----------
+#------------------------------------
+#------------------------------------
+lower = upper = matrix(0,p,3)
+j = 1
+h = 3
+func <- function(x) dnorm(x,fit[[h]]$mu_beta[j],
+	sqrt(fit[[h]]$sigma_beta[j,j]))
+tt = seq(fit[[h]]$mu_beta[j] - 3*sqrt(abs(fit[[h]]$sigma_beta[j,j])),
+		fit[[h]]$mu_beta[j] + 3*sqrt(abs(fit[[h]]$sigma_beta[j,j])),length.out=100)
+ss = dnorm(tt,fit[[h]]$mu_beta[j],sqrt(abs(fit[[h]]$sigma_beta[j,j])))
+object = list(x = tt, y = ss)
+hhpp <- hpd(object)
+lower[j,h-2] = hhpp[1]
+upper[j,h-2] = hhpp[2]
+hpddata = data.frame(x = tt, y = ss)
+gg_density <- ggplot(data=hpddata, aes(x=x)) + 
+geom_function(fun = func, xlim = c(lower[j,h-2]-0.5,
+	upper[j,h-2]+0.5))
+gg_density %>% 
+plot_credible_interval(lower[j,h-2], upper[j,h-2])
 
 
 

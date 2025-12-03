@@ -31,6 +31,20 @@ ggplot(as.data.frame(y), aes(x=y,y=..ncount..))+
   ggtitle("Histogram of los for azpro data")
 
 X = as.matrix(azpro[,-1])
+#
+df = data.frame(cbind(X,y))
+formul = as.formula(paste("y~",paste(colnames(X),collapse="+")))
+model_poisson <- glm(formul, data=df,family = poisson())
+AIC(model_poisson)
+model_nb <- glm.nb(formul, data=df)
+AIC(model_nb)
+sum(residuals(model_nb)^2)
+sum(residuals(model_poisson)^2)
+#
+library(AER)
+dispersiontest(model_poisson)
+#
+c = 1e-3
 hist(y)
 n = nrow(X)
 p = ncol(X)

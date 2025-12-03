@@ -16,5 +16,11 @@ plot_credible_interval <- function(
       y=y_dens[index_left:index_right]), 
     aes(x=x,y=y),
     fill="grey",
-    alpha=0.6)
+    alpha=0.6)+
+theme_bw() + 
+theme(legend.position="none") + 
+theme(axis.text.x = element_text(size = 12)) + 
+theme(axis.text.y = element_text(size = 12)) +
+theme(axis.title.x = element_text(size = 12)) + 
+theme(axis.title.y = element_text(size = 12))
 }

@@ -25,7 +25,7 @@ sppoissregvb <- function(X, y, init, prior = "CS",
 		b0 = 1e-2
 		a_beta = rep(a0 + 0.5,p)
 	} else if(prior == "CS"){
-  		c = 1e-2
+  		####c = 1e-2
   		A = 1e-2
   		Esigm2 = 1
   		Eam = 1

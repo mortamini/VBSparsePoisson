@@ -25,10 +25,25 @@ if(!all(c("package:grpreg","package:glmnet","package:MASS") %in% search())){
 }
 #
 riskmethod = "aic"
+c = 1e-3
+#
 data(affairs)
 head(affairs)
 y = affairs[,1]
 X = as.matrix(affairs[,-1])
+#
+df = data.frame(cbind(X,y))
+formul = as.formula(paste("y~",paste(colnames(X),collapse="+")))
+model_poisson <- glm(formul, data=df,family = poisson())
+AIC(model_poisson)
+model_nb <- glm.nb(formul, data=df)
+AIC(model_nb)
+sum(residuals(model_nb)^2)
+sum(residuals(model_poisson)^2)
+#
+library(AER)
+dispersiontest(model_poisson)
+#
 ggplot(as.data.frame(y), aes(x=y,y=..ncount..))+
   geom_histogram(color="darkblue", fill="lightblue",position = "stack")+
   ggtitle("Histogram of naffairs for affairs data")
@@ -37,6 +52,7 @@ p = ncol(X)
 set = matrix(0,5,10)
 rownames(set) <- c("LASSO","SCAD","Bernulli-VB","CS-VB","LAPLACE-VB")
 setr = matrix(NA,3,8)
+setr2 = matrix(NA,1,4)
 rownames(setr) <- c("Bernulli-VB","CS-VB","LAPLACE-VB")
 for(iter in 1:10){
 	cat("Iteration",iter,"\n")
@@ -177,6 +193,26 @@ for(iter in 1:10){
 			yhattests4[[i]] = predict(fits4[[i]],Xtest,method = "CS")
 		}
 	}
+	if(iter == 1){
+		fits42 = psts42 = betahats42 = yhats42 = yhattests42 = list()
+		for(i in 1:4){
+			c = 1*10^(-i-1)
+			fits42[[i]] <- sppoissregvb(X,y,init,prior="CS")
+			a = c(0,abs(fit4$mu_beta[-1]) - 1e-5)
+			b = c(abs(fit4$mu_beta[-1]) + 1e-5,0)
+			gamseq = sort((a + b)/2)
+			if(riskmethod == "cv3fold"){
+				risks = sapply(gamseq,cv3fold,"CS")
+			} else {
+				risks = sapply(gamseq,AICf,4)
+			}
+			gamopt = gamseq[which.min(risks)]
+			psts42[[i]] = c(1,1 * (abs(fits42[[i]]$mu_beta[-1])> gamopt))
+			betahats42[[i]] = fits42[[i]]$mu_beta * fits42[[i]]$pst
+			yhats42[[i]] = exp(X %*% betahats42[[i]])
+			yhattests42[[i]] = predict(fits42[[i]],Xtest,method = "CS")
+		}
+	}
 	#------------------------------------
 	fit5 <- sppoissregvb(X,y,init,prior="Laplace")
 	a = c(0,abs(fit5$mu_beta[-1]) - 1e-5)
@@ -221,12 +257,15 @@ for(iter in 1:10){
 			setr[2,i] = (mean((ytest-yhattests4[[i]])^2)/var(ytest))/set[4,iter]
 			setr[3,i] = (mean((ytest-yhattests5[[i]])^2)/var(ytest))/set[5,iter]
 		}
+		for(i in 1:4){
+			setr2[1,i] = (mean((ytest-yhattests42[[i]])^2)/var(ytest))/set[4,iter]
+		}
 	}
 }
 round(apply(set,1,mean),3)
 round(apply(set,1,sd),3)
 setr
-
+setr2
 
 
 

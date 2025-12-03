@@ -8,7 +8,7 @@ if(!("generate_samples" %in% ls())){
 	source("predict.R")
 	source("hpd.R")
 	source("hpdplot.R")
-	source("predict_mcmc.R")
+	##source("predict_mcmc.R")
 }
 if(!all(c("package:grpreg","package:glmnet","package:MASS") %in% search())){
 	library(MASS)
@@ -39,6 +39,7 @@ n = nrow(X)
 p = ncol(X)
 set = syst = matrix(0,8,10)
 rownames(set) <- rownames(syst) <- c("LASSO","SCAD","Bernulli-VB","CS-VB","LAPLACE-VB","Bernulli-MCMC","CS-MCMC","LAPLACE-MCMC")
+riskmethod = "AICc"
 for(iter in 1:10){
 	cat("Iteration",iter,"\n")
 	y = fishing[,1]
@@ -126,7 +127,7 @@ for(iter in 1:10){
 		AIC
 	}
 	#------------------------------------
-	c = 1e-2
+	c = 1e-3
 	syst[4,iter] = system.time(fit4 <- sppoissregvb(X,y,init,prior="CS"))[[3]]
 	p0 = min(0.9,max(0.1,sum(pst1)/p))
 	a = c(0,abs(fit4$mu_beta[-1]) - 1e-5)
@@ -343,6 +344,12 @@ myplot <- ggplot(dseb,aes(x = Method, y = values, color = Method)) +
 geom_boxplot(fatten = 2, notch=FALSE,outlier.shape = 16) +
 scale_y_continuous(limits = quantile(dseb$values, c(0.1, 0.9), na.rm = T)) + 
 ylim(0.1, 0.3) + xlab('') + 
+theme_bw() + 
+theme(legend.position="none") + 
+theme(axis.text.x = element_text(size = 12)) + 
+theme(axis.text.y = element_text(size = 12)) +
+theme(axis.title.x = element_text(size = 12)) + 
+theme(axis.title.y = element_text(size = 12)) +
 ylab('Test relative error')
 suppressWarnings(print(myplot))
 dev.off()
@@ -354,6 +361,12 @@ myplot <- ggplot(dseb,aes(x = Method, y = values, color = Method)) +
 geom_boxplot(fatten = 2, notch=FALSE,outlier.shape = 16) +
 scale_y_continuous(limits = quantile(dseb$values, c(0.1, 0.9), na.rm = T)) + 
 ylim(0.0, 0.05) + xlab('') + 
+theme_bw() + 
+theme(legend.position="none") + 
+theme(axis.text.x = element_text(size = 12)) + 
+theme(axis.text.y = element_text(size = 12)) +
+theme(axis.title.x = element_text(size = 12)) + 
+theme(axis.title.y = element_text(size = 12)) +
 ylab('Relative computation time')
 suppressWarnings(print(myplot))
 dev.off()

@@ -133,6 +133,7 @@ for(iter in 1:Iterations){
 	}
 	#------------------------------------
 	cat("CS-VB \n")
+	c = 1e-3
 	syst[4,iter] = system.time(fit[[4]] <- tryCatch({
 	sppoissregvb(X,y,init,prior="CS", 
 		eps = 1e-12, maxiter = 100)},error=function(e){NULL}))[[3]]
@@ -205,6 +206,11 @@ for(iter in 1:Iterations){
 	}
 	coverage[[iter]] = cover
 }
+#------------------------------------
+save(seb,se,set,FPR,FNR,syst,coverage,
+file = "results2.Rdata")
+#------------------------------------
+load(file.choose())
 #------------------------------------
 #------------------------------------
 systr = syst

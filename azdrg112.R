@@ -27,12 +27,26 @@ data(azdrg112)
 head(azdrg112)
 y = azdrg112[,1]
 X = as.matrix(azdrg112[,-1])
+#
+df = data.frame(cbind(X,y))
+formul = as.formula(paste("y~",paste(colnames(X),collapse="+")))
+model_poisson <- glm(formul, data=df,family = poisson())
+AIC(model_poisson)
+model_nb <- glm.nb(formul, data=df)
+AIC(model_nb)
+sum(residuals(model_nb)^2)
+sum(residuals(model_poisson)^2)
+#
+library(AER)
+dispersiontest(model_poisson)
+#
 ggplot(as.data.frame(y), aes(x=y,y=..ncount..))+
   geom_histogram(color="darkblue", fill="lightblue",position = "stack")+
   ggtitle("Histogram of los for azdrg112 data")
 n = nrow(X)
 p = ncol(X)
 set = matrix(0,5,10)
+c = 1e-3
 rownames(set) <- c("LASSO","SCAD","Bernulli","CS","LAPLACE")
 for(iter in 1:10){
 	cat("Iteration",iter,"\n")
