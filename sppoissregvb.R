@@ -7,7 +7,7 @@ sppoissregvb <- function(X, y, init, prior = "CS",
   	D_beta = sigma_beta + mu_beta %*% t(mu_beta)
 	pst = init$pst
 	p = ncol(X)
-	p0 = max(0.01,min(sum(pst)/p,0.99))
+	###p0 = max(0.01,min(sum(pst)/p,0.99))
 	n = length(y)
 	if(nrow(X) != n) stop("number of samples in X and y are not equal!")
 	if(length(mu_beta) != p | nrow(sigma_beta) != p)
@@ -46,7 +46,7 @@ sppoissregvb <- function(X, y, init, prior = "CS",
   		pst = rep(1,p)
 	}
 	Pstar=diag(pst)
-    omega = pst %*% t(pst) + Pstar * (diag(p) - Pstar)
+     omega = pst %*% t(pst) + Pstar * (diag(p) - Pstar)
 	kesi = X %*% diag(pst) %*% mu_beta
 	#####kesi = sqrt(diag(X %*% (D_beta * omega) %*% t(X)))
 	Mkesi = exp(kesi)*(1-kesi)
@@ -108,13 +108,13 @@ sppoissregvb <- function(X, y, init, prior = "CS",
   			Eam1 = (A^(-1) + Etau0m1)^(-1)
 			Eloga = log(A^(-1) + Etau0m1) - digamma(1)
 			pst = rep(1,p)
-    		Pstar = diag(pst)
+    			Pstar = diag(pst)
 		}
-			alphast = pst + alpha0
+		alphast = pst + alpha0
     		betast = beta0 - pst + 1
-			Pstar=diag(pst)
+		Pstar=diag(pst)
     		omega = pst %*% t(pst) + Pstar * (diag(p) - Pstar)
-			esi = X %*% diag(pst) %*% mu_beta
+		kesi = X %*% diag(pst) %*% mu_beta
 			#####kesi = sqrt(diag(X %*% (D_beta * omega) %*% t(X)))
     		Mkesi = exp(kesi) * (1-kesi)
 		if(prior == "Bernulli"){
@@ -137,6 +137,7 @@ sppoissregvb <- function(X, y, init, prior = "CS",
 				0.5 * logdet(sigma_beta) -
 				0.25 * elambda * sum(1/diag(D_beta[-1,-1])) + 
 				sum(log(sapply(sqrt(astar*bstar), function(z){BesselK(0.5, z)})))
+				#####sum(log(sapply(sqrt(astar*bstar), function(z){mybesselK(0.5, z)})))
 		} else if(prior == "CS"){
 		    elbo = - t(Mkesi) %*% (1+X %*% mu_beta) - 
 				sum(exp(kesi) * kesi^2/2) -
@@ -172,9 +173,9 @@ sppoissregvb <- function(X, y, init, prior = "CS",
   	output = list(mu_beta = mu_beta ,
                 sigma_beta = sigma_beta,
                 pst = pst, 
-				 alphast = alphast,
-				 betast = betast, 
-				 sigmapars = sigmapars,
-				elambda = elambda, diffELBO = diffvec) 
+			  alphast = alphast,
+			  betast = betast, 
+			  sigmapars = sigmapars,
+			  elambda = elambda, diffELBO = diffvec) 
   	output 
 }

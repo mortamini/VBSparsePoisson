@@ -23,7 +23,7 @@ if(!("package:dplyr" %in% search())){
 	library(tidyr)
 }
 #------------------------------------
-Iterations = 1000
+Iterations = 100
 seb = se = set = FPR = FNR = syst = matrix(0,5,Iterations)
 rownames(seb) <- rownames(se) <-
 rownames(set) <- rownames(FPR) <-
@@ -75,7 +75,8 @@ for(iter in 1:Iterations){
 	syst[2,iter] = system.time(fit[[2]] <- suppressWarnings(grpreg(X[,-1], y, penalty="grSCAD",
 	family="poisson")))[[3]]
 	betahat3 = coef(fit[[2]])
-	tLL <- fit[[2]]$loss
+	####tLL <- fit[[2]]$loss
+	tLL <- fit[[2]]$deviance
 	k <- fit[[2]]$df
 	AICc <- tLL+2*k+2*k*(k+1)/(n-k-1)
 	betahat[[2]] = mu_1 = betahat3[,which.min(AICc)]
@@ -91,6 +92,7 @@ for(iter in 1:Iterations){
 	alphastar = rep(1,p)
 	betastar = rep(1,p)
 	alpha0 = beta0 = 1
+	p0 = 0.5
 	init = list(mu_beta = mu_beta,sigma_beta = Sigma_beta,pst = pst0,
 		astar = astar, bstar = bstar, Esigm2 = Esigm2, alphastar = alphastar,
 		betastar = betastar)
@@ -133,11 +135,12 @@ for(iter in 1:Iterations){
 	}
 	#------------------------------------
 	cat("CS-VB \n")
-	c = 1e-3
+	c = 1e-2
 	syst[4,iter] = system.time(fit[[4]] <- tryCatch({
 	sppoissregvb(X,y,init,prior="CS", 
 		eps = 1e-12, maxiter = 100)},error=function(e){NULL}))[[3]]
-	p0 = max(0.01,min(sum(pst[[1]])/p,0.99))
+	#####p0 = max(0.01,min(sum(pst[[1]])/p,0.99))
+	p0 = 0.5
 	a = c(0,abs(fit[[4]]$mu_beta[-1]) - 1e-5)
 	b = c(abs(fit[[4]]$mu_beta[-1]) + 1e-5,0)
 	gamseq = sort((a + b)/2)
@@ -208,7 +211,7 @@ for(iter in 1:Iterations){
 }
 #------------------------------------
 save(seb,se,set,FPR,FNR,syst,coverage,
-file = "results2.Rdata")
+file = "results2-new.Rdata")
 #------------------------------------
 load(file.choose())
 #------------------------------------

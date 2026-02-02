@@ -8,7 +8,6 @@ if(!("generate_samples" %in% ls())){
 	source("predict.R")
 	source("hpd.R")
 	source("hpdplot.R")
-	##source("predict_mcmc.R")
 }
 if(!all(c("package:grpreg","package:glmnet","package:MASS") %in% search())){
 	library(MASS)
@@ -21,7 +20,10 @@ if(!all(c("package:grpreg","package:glmnet","package:MASS") %in% search())){
 	library(gsl)
 	library("rjags")
 	library(dplyr)
+	library(mpath)
 }
+#
+riskmethod = "aic"
 #
 data(fishing)
 fishing = fishing[,-c(1,5,6)]
@@ -37,9 +39,13 @@ hist(y)
 X = t((t(X) - colMeans(X))/apply(X,2,sd))
 n = nrow(X)
 p = ncol(X)
-set = syst = matrix(0,8,10)
-rownames(set) <- rownames(syst) <- c("LASSO","SCAD","Bernulli-VB","CS-VB","LAPLACE-VB","Bernulli-MCMC","CS-MCMC","LAPLACE-MCMC")
+set = syst = matrix(0,9,10)
+rownames(set) <- rownames(syst) <- c("LASSO-NB",
+"LASSO-Poiss","SCAD-Poiss","Bernulli-VB",
+"CS-VB","LAPLACE-VB","Bernulli-MCMC",
+"CS-MCMC","LAPLACE-MCMC")
 riskmethod = "AICc"
+pst =array(NA,dim = c(p+1,10,9))
 for(iter in 1:10){
 	cat("Iteration",iter,"\n")
 	y = fishing[,1]
@@ -55,8 +61,22 @@ for(iter in 1:10){
 	X = X[samp,]
 	X = cbind(1,X)
 	Xtest = cbind(1,Xtest)
+	dframe = data.frame(cbind(X[,-1],y))
 	#------------------------------------
-	syst[1,iter] = system.time(fit1 <- glmnet(X[,-1],y,
+	syst[1,iter] = system.time(fit0 <- 
+	glmregNB(y ~ .,alpha=1, data = dframe))[[3]]
+	betahat0 = coef(fit0)
+	tLL <- fit0$nulldev - deviance(fit0)
+	k <- fit0$df
+	n <- nrow(X)
+	AICc <- -tLL+2*k+2*k*(k+1)/(n-k-1)
+	betahat0 = betahat0[,which.min(AICc)]
+	pst0 = 1*(betahat0 !=0)
+	yhat0 = exp(X %*% betahat0)
+	yhattest0 = exp(Xtest %*% betahat0)
+	pst[,iter,1] = pst0
+	#------------------------------------
+	syst[2,iter] = system.time(fit1 <- glmnet(X[,-1],y,
 	family="poisson"))[[3]]
 	betahat1 = coef(fit1)
 	tLL <- fit1$nulldev - deviance(fit1)
@@ -67,17 +87,19 @@ for(iter in 1:10){
 	pst1 = 1*(mu_0 !=0)
 	yhat1 = exp(X %*% mu_beta)
 	yhattest1 = exp(Xtest %*% mu_beta)
+	pst[,iter,2] = pst1
 	#------------------------------------
-	syst[2,iter] = system.time(fit2 <- suppressWarnings(grpreg(X[,-1], y, penalty="grSCAD",
+	syst[3,iter] = system.time(fit2 <- suppressWarnings(grpreg(X[,-1], y, penalty="grSCAD",
 	family="poisson")))[[3]]
 	betahat3 = coef(fit2)
-	tLL <- fit2$loss
+	tLL <- fit2$deviance
 	k <- fit2$df
 	AICc <- tLL+2*k+2*k*(k+1)/(n-k-1)
 	betahat2 = mu_1 = betahat3[,which.min(AICc)]
 	pst2 = 1*(mu_1 !=0)
 	yhat2 = exp(X %*% mu_1)
 	yhattest2 = exp(Xtest %*% mu_1)
+	pst[,iter,3] = pst2
 	#------------------------------------
 	p = ncol(X)
 	Sigma_beta = diag(rep(1e-10,p))
@@ -88,11 +110,13 @@ for(iter in 1:10){
 	alphastar = rep(1,p)
 	betastar = rep(1,p)
 	alpha0 = beta0 = 1
+	p0 = 0.5
 	init = list(mu_beta = mu_beta,sigma_beta = Sigma_beta,pst = pst0,
 		astar = astar, bstar = bstar, Esigm2 = Esigm2, alphastar = alphastar,
 		betastar = betastar)
-	syst[3,iter] = system.time(fit3 <- sppoissregvb(X,y,init,prior="Bernulli"))[[3]]
+	syst[4,iter] = system.time(fit3 <- sppoissregvb(X,y,init,prior="Bernulli"))[[3]]
 	pst3 = 1*(fit3$pst > 0.5)
+	pst[,iter,4] = pst3
 	betahat3 = fit3$mu_beta * fit3$pst
 	yhat3 = exp(X %*% betahat3)
 	yhattest3 = predict(fit3,Xtest,method = "Bernoulli")
@@ -117,8 +141,8 @@ for(iter in 1:10){
 		mean(CVf)
 	}
 	#------------------------------------
-	AICf <- function(gam, prin){
-		bethat = tryCatch({betahat[[prin]]},error=function(e){NULL})
+	AICf <- function(gam, bet){
+		bethat = tryCatch({bet},error=function(e){NULL})
 		bethat[-1] = tryCatch({bethat[-1] * (abs(bethat[-1]) > gam)},error=function(e){NULL})
 		yhat = tryCatch({trunc(exp(X %*% bethat))},error=function(e){NULL})
 		sse = tryCatch({mean(yhat - y)^2},error=function(e){NULL})
@@ -127,34 +151,37 @@ for(iter in 1:10){
 		AIC
 	}
 	#------------------------------------
-	c = 1e-3
-	syst[4,iter] = system.time(fit4 <- sppoissregvb(X,y,init,prior="CS"))[[3]]
-	p0 = min(0.9,max(0.1,sum(pst1)/p))
+	c = 1e-2
+	syst[5,iter] = system.time(fit4 <- sppoissregvb(X,y,init,prior="CS"))[[3]]
+	####p0 = min(0.9,max(0.1,sum(pst1)/p))
+	p0 = 0.5
 	a = c(0,abs(fit4$mu_beta[-1]) - 1e-5)
 	b = c(abs(fit4$mu_beta[-1]) + 1e-5,0)
 	gamseq = sort((a + b)/2)
 	if(riskmethod == "cv3fold"){
 		risks = sapply(gamseq,cv3fold,"CS")
 	} else {
-		risks = sapply(gamseq,AICf,4)
+		risks = sapply(gamseq,AICf,fit4$mu_beta)
 	}
-	gamopt = gamseq[which.min(risks)]
-	pst4 = c(1,1 * (abs(fit4$mu_beta[-1])> gamopt))
+	gamopt4 = gamseq[which.min(risks)]
+	pst4 = c(1,1 * (abs(fit4$mu_beta[-1])> gamopt4))
+	pst[,iter,5] = pst4
 	betahat4 = fit4$mu_beta * pst4
 	yhat4 = exp(X %*% betahat4)
 	yhattest4 = predict(fit4,Xtest,method = "CS")
 	#------------------------------------
-	syst[5,iter] = system.time(fit5 <- sppoissregvb(X,y,init,prior="Laplace"))[[3]]
+	syst[6,iter] = system.time(fit5 <- sppoissregvb(X,y,init,prior="Laplace"))[[3]]
 	a = c(0,abs(fit5$mu_beta[-1]) - 1e-5)
 	b = c(abs(fit5$mu_beta[-1]) + 1e-5,0)
 	gamseq = sort((a + b)/2)
 	if(riskmethod == "cv3fold"){
 		risks = sapply(gamseq,cv3fold,"Laplace")
 	} else {
-		risks = sapply(gamseq,AICf,5)
+		risks = sapply(gamseq,AICf,fit5$mu_beta)
 	}
-	gamopt = gamseq[which.min(risks)]
-	pst5 = c(1,1 * (abs(fit5$mu_beta[-1])> gamopt))
+	gamopt5 = gamseq[which.min(risks)]
+	pst5 = c(1,1 * (abs(fit5$mu_beta[-1])> gamopt5))
+	pst[,iter,6] = pst5
 	betahat5 = fit5$mu_beta * pst5
 	yhat5 = exp(X %*% betahat5)
 	yhattest5 = predict(fit5,Xtest,method = "Laplace")
@@ -204,13 +231,14 @@ for(iter in 1:10){
 		beta = rep(0.1,p), gamma = rep(1,p),
 		pi = rep(0.5,p), alpha0= 1, alpha = rep(1,p))
 	}
-	syst[6,iter] = system.time(mod<-jags.model(textConnection(mod_string),data=data,
+	syst[7,iter] = system.time(mod<-jags.model(textConnection(mod_string),data=data,
 	inits=inits,n.chain=1))[[3]]
 	library(coda)
-	syst[6,iter] = syst[6,iter] + system.time(update(mod,1000))[[3]]
-	syst[6,iter] = syst[6,iter] + system.time(mod_sim1<-coda.samples(model = 
+	syst[7,iter] = syst[6,iter] + system.time(update(mod,1000))[[3]]
+	syst[7,iter] = syst[6,iter] + system.time(mod_sim1<-coda.samples(model = 
 	mod,variable.names = params,n.iter = 5000))[[3]]
 	yhattest6 = trunc(exp(Xtest %*%diag(c(1,colMeans(mod_sim1[[1]][,c(8:10)]))) %*% colMeans(mod_sim1[[1]][,c(11,5:7)])))
+	pst[,iter,7] = c(1,colMeans(mod_sim1[[1]][,c(8:10)]))
 #------------------------------------
 	inits <- function(){
 	list(intercept = init$mu_beta[1], 
@@ -252,20 +280,26 @@ for(iter in 1:10){
 	pi = rep(0.5,3), sigma = 1, ai = 1,
 	eta1 = init$mu_beta[-1], eta2 = init$mu_beta[-1])
 	}
-	syst[7,iter] = system.time(mod<-jags.model(textConnection(mod_string),data=data,
+	syst[8,iter] = system.time(mod<-jags.model(textConnection(mod_string),data=data,
 	inits=inits,n.chain=1))[[3]]
 	library(coda)
-	syst[7,iter] = syst[7,iter] + system.time(update(mod,1000))[[3]]
-	syst[7,iter] = syst[7,iter] + system.time(mod_sim1<-coda.samples(model = 
+	syst[8,iter] = syst[7,iter] + system.time(update(mod,1000))[[3]]
+	syst[8,iter] = syst[7,iter] + system.time(mod_sim1<-coda.samples(model = 
 	mod,variable.names = params,n.iter = 5000))[[3]]
 	data = list(n=n,p=p,y=y,X=X,p0=p0)
-	fit7 <- 
-	bugs(data,inits,model.file = "cs.txt",
+	fit7 <- bugs(data,inits,model.file = "cs.txt",
 	parameters = c("intercept", "beta" , "z", "pi", 
 	"sigma","ai","eta1","eta2"),
 	n.chains = 1, n.iter = 10000,n.burnin=5000,
 	,n.thin=10)
 	yhattest7 = trunc(exp(Xtest %*% colMeans(fit7$sims.matrix[,1:4])))
+	a = c(0,abs(colMeans(fit7$sims.matrix[,1:4])) - 1e-5)
+	b = c(abs(colMeans(fit7$sims.matrix[,1:4])) + 1e-5,0)
+	gamseq = sort((a + b)/2)
+	risks = sapply(gamseq,AICf,colMeans(fit7$sims.matrix[,1:4]))
+	gamopt7 = gamseq[which.min(risks)]
+	pst7 = c(1,1 * (abs(colMeans(fit7$sims.matrix[,1:4]))> gamopt7))
+	pst[,iter,8] = pst7
 #------------------------------------
 	inits <- function(){
 	list(intercept = init$mu_beta[1], 
@@ -307,28 +341,49 @@ for(iter in 1:10){
 	tau = rep(1,p), 
 	lam2 = 0.5, ai = 1)
 	}
-	syst[8,iter] = tryCatch({system.time(mod<-jags.model(textConnection(mod_string),data=data,
+	syst[9,iter] = tryCatch({system.time(mod<-jags.model(textConnection(mod_string),data=data,
 	inits=inits,n.chain=1))[[3]]},error=function(e){syst[8,1]})
-	syst[8,iter] = syst[8,iter] + system.time(update(mod,1000))[[3]]
-	syst[8,iter] = syst[8,iter] + system.time(mod_sim3<-coda.samples(model = 
+	syst[9,iter] = syst[8,iter] + system.time(update(mod,1000))[[3]]
+	syst[9,iter] = syst[8,iter] + system.time(mod_sim3<-coda.samples(model = 
 	mod,variable.names = params,n.iter = 5000))[[3]]
 	yhattest8 = trunc(exp(Xtest %*% colMeans(mod_sim3[[1]][,c(5,2:4)])))
+	a = c(0,abs(colMeans(mod_sim3[[1]][,c(5,2:4)])) - 1e-5)
+	b = c(abs(colMeans(mod_sim3[[1]][,c(5,2:4)])) + 1e-5,0)
+	gamseq = sort((a + b)/2)
+	risks = sapply(gamseq,AICf,colMeans(mod_sim3[[1]][,c(5,2:4)]))
+	gamopt8 = gamseq[which.min(risks)]
+	pst8 = c(1,1 * (abs(colMeans(mod_sim3[[1]][,c(5,2:4)]))> gamopt8))
+	pst[,iter,9] = pst8
 	#------------------------------------
-	set[1,iter] = mean((ytest-yhattest1)^2)/var(ytest)
-	set[2,iter] = mean((ytest-yhattest2)^2)/var(ytest)
-	set[3,iter] = mean((ytest-yhattest3)^2)/var(ytest)
-	set[4,iter] = mean((ytest-yhattest4)^2)/var(ytest)
-	set[5,iter] = mean((ytest-yhattest5)^2)/var(ytest)
-	set[6,iter] = mean((ytest-yhattest6)^2)/var(ytest)
-	set[7,iter] = mean((ytest-yhattest7)^2)/var(ytest)
-	set[8,iter] = mean((ytest-yhattest8)^2)/var(ytest)
+	set[1,iter] = mean((ytest-yhattest0)^2)/var(ytest)
+	set[2,iter] = mean((ytest-yhattest1)^2)/var(ytest)
+	set[3,iter] = mean((ytest-yhattest2)^2)/var(ytest)
+	set[4,iter] = mean((ytest-yhattest3)^2)/var(ytest)
+	set[5,iter] = mean((ytest-yhattest4)^2)/var(ytest)
+	set[6,iter] = mean((ytest-yhattest5)^2)/var(ytest)
+	set[7,iter] = mean((ytest-yhattest6)^2)/var(ytest)
+	set[8,iter] = mean((ytest-yhattest7)^2)/var(ytest)
+	set[9,iter] = mean((ytest-yhattest8)^2)/var(ytest)
 }
+#------------------------------------
+save(pst,set,syst,
+file = "results-fishing-new.Rdata")
+#------------------------------------
+load(file.choose())
+#------------------------------------
 round(rowMeans(set),3)
 round(apply(set,1,sd),3)
-syst[3,] <- syst[3,]/syst[6,]
+pstperc = apply(pst,c(1,3),mean)
+rownames(pstperc) = names(pst1)
+colnames(pstperc) = rownames(set)
+t(pstperc)
+#------------------------------------
+#------------------------------------
+#------------------------------------
 syst[4,] <- syst[4,]/syst[7,]
 syst[5,] <- syst[5,]/syst[8,]
-rownames(syst)[3:5] <- 
+syst[6,] <- syst[6,]/syst[9,]
+rownames(syst)[4:6] <- 
 c("Bernulli-VB/MCMC", 
 "CS-VB/MCMC", "LAPLACE-VB/MCMC")
 #------------------------------------
@@ -360,7 +415,7 @@ names(dseb)[2] <- "Method"
 myplot <- ggplot(dseb,aes(x = Method, y = values, color = Method)) + 
 geom_boxplot(fatten = 2, notch=FALSE,outlier.shape = 16) +
 scale_y_continuous(limits = quantile(dseb$values, c(0.1, 0.9), na.rm = T)) + 
-ylim(0.0, 0.05) + xlab('') + 
+ylim(0.0, 0.2) + xlab('') + 
 theme_bw() + 
 theme(legend.position="none") + 
 theme(axis.text.x = element_text(size = 12)) + 
@@ -395,6 +450,8 @@ dev.off()
 	alphastar = rep(1,p)
 	betastar = rep(1,p)
 	alpha0 = beta0 = 1
+	p0 = 0.5
+	c = 1e-2
 	fit = list()
 	init = list(mu_beta = mu_beta,sigma_beta = Sigma_beta,pst = pst0,
 		astar = astar, bstar = bstar, Esigm2 = Esigm2, alphastar = alphastar,
@@ -418,8 +475,8 @@ dev.off()
 		}
 	}
 
-j = 4
-h = 3
+j = 1
+h = 1
 	func <- function(x) dnorm(x,fit[[h]]$mu_beta[j],
 		sqrt(fit[[h]]$sigma_beta[j,j]))
 	hpddata = data.frame(x = tt, y = ss)

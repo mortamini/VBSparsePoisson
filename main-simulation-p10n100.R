@@ -23,7 +23,7 @@ if(!("package:dplyr" %in% search())){
 	library(tidyr)
 }
 #------------------------------------
-Iterations = 1000
+Iterations = 100
 seb = se = set = FPR = FNR = syst = matrix(0,8,Iterations)
 rownames(seb) <- rownames(se) <-
 rownames(set) <- rownames(FPR) <-
@@ -78,7 +78,8 @@ for(iter in 1:Iterations){
 	syst[2,iter] = system.time(fit[[2]] <- suppressWarnings(grpreg(X[,-1], y, penalty="grSCAD",
 	family="poisson")))[[3]]
 	betahat3 = coef(fit[[2]])
-	tLL <- fit[[2]]$loss
+	####tLL <- fit[[2]]$loss
+	tLL <- fit[[2]]$deviance
 	k <- fit[[2]]$df
 	AICc <- tLL+2*k+2*k*(k+1)/(n-k-1)
 	betahat[[2]] = mu_1 = betahat3[,which.min(AICc)]
@@ -94,6 +95,7 @@ for(iter in 1:Iterations){
 	alphastar = rep(1,p)
 	betastar = rep(1,p)
 	alpha0 = beta0 = 1
+	p0 = 0.5
 	init = list(mu_beta = mu_beta,sigma_beta = Sigma_beta,pst = pst0,
 		astar = astar, bstar = bstar, Esigm2 = Esigm2, alphastar = alphastar,
 		betastar = betastar)
@@ -136,11 +138,12 @@ for(iter in 1:Iterations){
 	}
 	#------------------------------------
 	cat("CS-VB \n")
-	c = 1e-3
+	c = 1e-2
 	syst[4,iter] = system.time(fit[[4]] <- tryCatch({
 	sppoissregvb(X,y,init,prior="CS", 
 		eps = 1e-12, maxiter = 100)},error=function(e){NULL}))[[3]]
-	p0 = max(0.01,min(sum(pst[[1]])/p,0.99))
+	#####p0 = max(0.01,min(sum(pst[[1]])/p,0.99))
+	p0 = 0.5
 	a = c(0,abs(fit[[4]]$mu_beta[-1]) - 1e-5)
 	b = c(abs(fit[[4]]$mu_beta[-1]) + 1e-5,0)
 	gamseq = sort((a + b)/2)
@@ -208,18 +211,28 @@ for(iter in 1:Iterations){
 	params=c("intercept", "beta" , "gamma","pi", 
 	"alpha0", "alpha")
 	inits=function(){
-	  inits=list(intercept = 0, 
-		beta = rep(0.1,pM), gamma = rep(1,pM),
-		pi = rep(0.5,pM), alpha0= 1, alpha = rep(1,pM))
+	  inits=list(intercept = mu_0[1], 
+		beta = mu_0[-1]+0.01*(pst0[-1]==0), gamma = pst0[-1],
+		pi = rep(0.5,pM), alpha0= 1, alpha = rep(0.5,pM))
 	}
 	syst[6,iter] = system.time(mod<-jags.model(textConnection(mod_string),data=data,
 	inits=inits,n.chain=1))[[3]]
 	library(coda)
+	nchains = ifelse(iter == 1, 3, 1)
 	syst[6,iter] = syst[6,iter] + system.time(update(mod,5000))[[3]]
-	syst[6,iter] = syst[6,iter] + system.time(mod_sim1<-coda.samples(model = 
-	mod,variable.names = params,n.iter = 10000, thin = 10))[[3]]
+	mod_sim1 = list()
+	class(mod_sim1) <- "mcmc.list"
+	for(ch in 1:nchains){
+		syst[6,iter] = syst[6,iter] + system.time(mod_sim1[[ch]] <- 
+		coda.samples(model = mod,variable.names = params,  
+		n.iter = 10000, thin = 10))[[3]]
+	}
+	if(iter == 1){
+		gelman1 = gelman.diag2(mod_sim1, confidence = 0.90, 
+			autoburnin=FALSE)
+	}
 	parsims = list()
-	parsims[[1]] = as.matrix(mod_sim1)
+	parsims[[1]] = as.matrix(mod_sim1[[1]])
 	parsims[[1]] = cbind(parsims[[1]][,29],
 	parsims[[1]][,c(11:19)],
 	parsims[[1]][,c(20:28)],
@@ -246,7 +259,7 @@ for(iter in 1:Iterations){
 		bugs(data,inits,model.file = "cs.txt",
 		parameters = c("intercept", "beta" , "z", "pi", 
 		"sigma","ai","eta1","eta2"),
-		n.chains = 1, n.iter = 10000,n.burnin=5000,
+		n.chains = nchains, n.iter = 10000,n.burnin=5000,
 		n.thin=10,debug = F)
 	}, error = function(e) {
   		if (grepl("time limit", e$message)) {
@@ -258,6 +271,10 @@ for(iter in 1:Iterations){
 	}, finally = {
   		setTimeLimit(elapsed = Inf)  # Reset time limit
 	}))[[3]]
+	if(iter == 1){
+		gelman2 = gelman.diag2(fit[[7]], confidence = 0.95, 
+			autoburnin=FALSE)
+	}
 	pars = tryCatch({fit[[7]]$summary[,1]}, error = function(e) {return(NULL)})
 	pst[[7]] = tryCatch({c(1,fit[[7]]$summary[11:19,3])}, error = function(e) {return(NULL)})
 	parsims[[2]] = tryCatch({fit[[7]]$sims.matrix[(1:5000) %% 10 == 1, ]}, error = function(e) {return(NULL)})
@@ -278,7 +295,7 @@ for(iter in 1:Iterations){
 		bugs(data,inits,model.file = "laplace.txt",
 		parameters = c("intercept", "beta" , "sigma",
 		"tau", "lam2", "ai"),
-		n.chains = 1, n.iter = 10000,n.burnin=5000,
+		n.chains = nchains, n.iter = 10000,n.burnin=5000,
 		n.thin=10,debug = F)
 	}, error = function(e) {
   		if (grepl("time limit", e$message)) {
@@ -290,6 +307,10 @@ for(iter in 1:Iterations){
 	}, finally = {
   		setTimeLimit(elapsed = Inf)  # Reset time limit
 	}))[[3]]
+	if(iter == 1){
+		gelman3 = gelman.diag2(fit[[8]], confidence = 0.95, 
+			autoburnin=FALSE)
+	}
 	pars = tryCatch({fit[[8]]$summary[,1]}, error = function(e) {return(NULL)})
 	parsims[[3]] = tryCatch({fit[[8]]$sims.matrix[(1:5000) %% 10 == 1, ]}, error = function(e) {return(NULL)})
 	betahat[[8]] = tryCatch({colMeans(parsims[[3]][,1:10])}, error = function(e) {return(NULL)})
@@ -682,15 +703,18 @@ for(iter in 1:Iterations){
 	coverage[[iter]] = cover
 }
 #------------------------------------
-setwd("E:/desktop/research/Kharabati review/github3")
+setwd("F:/Students/Fourth major revision/github4")
 save(seb,se,set,FPR,FNR,syst,coverage,
 accuracyl,accuracy2l,accuracy3l, 
-accuracy4l,accuracy5l,accuracy6l,
-file = "results1.Rdata")
-save(fit, file = "fitresult.Rdata")
+accuracy4l,accuracy5l,accuracy6l,gelman1,gelman2,gelman3,
+file = "results1-new.Rdata")
+save(fit, file = "fitresult-new.Rdata")
 #------------------------------------
 load(file.choose())
 #------------------------------------
+gelman1
+gelman2
+gelman3
 #------------------------------------
 systr = syst
 for(i in 1:8){
@@ -850,7 +874,7 @@ names(dseb)[2] <- "Method"
 myplot <- ggplot(dseb,aes(x = Method, y = values, color = Method)) + 
 geom_boxplot(fatten = 2, notch=FALSE,outlier.shape = 16) +
 scale_y_continuous(limits = quantile(dseb$values, c(0.1, 0.9), na.rm = T)) + 
-ylim(0.001, 0.06) + xlab('') +
+ylim(0, 0.05) + xlab('') +
 theme_bw() + 
 theme(legend.position="none") + 
 theme(axis.text.x = element_text(size = 12)) + 
